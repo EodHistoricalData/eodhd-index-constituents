@@ -236,6 +236,7 @@ window.IndexConstituentsView = ({ apiKey, theme }) => {
   // both are in the page now, the answer under the button.
   const [askInPage, askElement] = (window.PTDialog && window.PTDialog.useAsk) ? window.PTDialog.useAsk() : [async () => true, null];
   const [investNote, setInvestNote] = React.useState(null);
+  const [investWall, setInvestWall] = ((window.FreeLimitWalls && window.FreeLimitWalls.useLimitCard) || (() => React.useState(null)))();
   const [searchQuery, setSearchQuery] = React.useState('');
   // The search box killed its outline and put nothing in its place, so it was
   // the one control on the screen a keyboard user could reach and not see.
@@ -760,6 +761,8 @@ window.IndexConstituentsView = ({ apiKey, theme }) => {
       ),
       // Action buttons row
       React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' } },
+        investWall && window.PlanNotice && window.PlanNotice.RefusalCard && React.createElement('div', { style: { flexBasis: '100%' } },
+          React.createElement(window.PlanNotice.RefusalCard, { refusal: investWall, isDark })),
         investNote && React.createElement('div', { id: 'index-invest-note', role: investNote.error ? 'alert' : 'status', style: { flexBasis: '100%', fontSize: 13, lineHeight: 1.5, color: investNote.error ? (isDark ? C3.error : (C3.errorLight || '#c81e2c')) : (isDark ? C3.textDark : C3.textLightTheme) } }, investNote.text),
         askElement,
         // Feature 3: AI Sector Analysis (1 token) -- only when a model is
