@@ -8,7 +8,8 @@ window.APP_META = {
   "title": "EODHD Index Constituents",
   "description": "Browse the members of any S&P or Dow Jones index, live, on your own EODHD key.",
   "keyNote": "Needs the S&P and Dow Jones index constituents add-on from the EODHD Marketplace, which is paid. On a free key the app opens and tells you exactly that.",
-  "storage": []
+  "storage": [],
+  "ownFailures": []
 };
 
 if (!window.React || !window.ReactDOM) {
