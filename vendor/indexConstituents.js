@@ -326,7 +326,7 @@ window.IndexConstituentsView = ({ apiKey, theme }) => {
       const nav = hashNavRef.current;
       // The same reading as on arrival, upper case included: a followed
       // link to "dji.indx" asked EODHD in lower case and read as a plan
-      // refusal (on the 23.10 integration).
+      // refusal (integration).
       const read = window.SymbolCode.index(st.index);
       const want = read.code || null;
       // The region tab a followed link names: it was read only on arrival.
@@ -444,15 +444,36 @@ window.IndexConstituentsView = ({ apiKey, theme }) => {
   // Not a live region: the note counts every second; the press was said once
   // when it was held, by RateLimitWait. In notServed the words
   // are the live region and the counting button stays outside it.
-  const waitLine = () => waitNote && React.createElement('p', { 'data-ic-wait': 'true', style: { margin: '12px 0 0', fontSize: 13, color: isDark ? '#E0E3EB' : '#1e1b4b' } }, waitNote);
+  // `kind`: the list it is of (data-own-fail).
+  const waitLine = (kind) => waitNote && React.createElement('p', { 'data-ic-wait': 'true', 'data-own-fail': kind, style: { margin: '12px 0 0', fontSize: 13, color: isDark ? '#E0E3EB' : '#1e1b4b' } }, waitNote);
+  // "Nothing below is missing data" is the panel's sentence, never the
+  // view's: the line under the panel says what did not
+  // load and points to it.
   const notServed = (retry) => React.createElement('div', { style: { textAlign: 'center', padding: '32px 20px' } },
-    React.createElement('p', { role: 'status', style: { color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.7)', margin: '0 0 16px', fontSize: 14 } },
-      'Nothing below is missing data — the request was not served. See the panel above.'),
+    React.createElement('p', { role: 'status', 'data-own-fail': 'index-list', 'data-see-panel': 'true', style: { color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.7)', margin: '0 0 16px', fontSize: 14 } },
+      RLW.panelLine('The index list')),
     React.createElement(RLW.RetryButton, {
       wait: rlWait, isDark, 'data-retry-focus': 'true', onClick: () => retryUnlessLimited(() => { retryFocusRef.current = true; retry(); }),
       style: { padding: '12px 24px', background: C3.logoGradient, border: 'none', borderRadius: 12, color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'Sora',sans-serif" },
     }),
-    waitLine());
+    waitLine('index-list'));
+  // The constituent list that did not come, by its cause.
+  const compCode = () => String(selectedIndex || 'this index').replace(/\.INDX$/i, '');
+  const compRefused = () => {
+    const f = components && components.fail;
+    return Boolean(f && !f.limited && !f.unreadable && (f.status === 403 || RLW.hostSaysKey(f)));
+  };
+  const compFailText = () => {
+    const f = components && components.fail;
+    const what = 'The constituent list for ' + compCode();
+    const notEmpty = ' That is not a statement that the index is empty.';
+    if (listLimited || (f && f.limited)) return what + ' did not load — ' + RLW.REACHED + notEmpty;
+    if (components.unreadable) return what + ' did not load — ' + RLW.UNREADABLE + notEmpty;
+    if (f && RLW.hostSaysKey(f)) return RLW.panelLine(what);
+    if (f && f.status === 403) return what + ' is not included in this plan.';
+    if (f && f.status) return what + ' did not load — ' + RLW.failReason(f) + notEmpty;
+    return what + ' did not load — EODHD did not answer, or the connection dropped.' + notEmpty;
+  };
   // The list that did not come back, and why (RLW.failure): at 429 it read
   // "Could not read the index list from EODHD. Reload to try again.", with
   // nothing about the limit and no button. Null when
@@ -593,13 +614,16 @@ window.IndexConstituentsView = ({ apiKey, theme }) => {
       // client could not parse) could not be read: said as that, not as "did
       // not answer".
       const unread = Boolean(data && typeof data === 'object' && !usable && (data.unreadable || !data.error));
-      setComponents(usable ? data : { error: true, unreadable: unread });
+      // Why it was not served, when the client says (its status): a 403 is
+      // the plan's, not a dropped connection.
+      const fail = !usable && data && typeof data === 'object' && (data.status || data.rateLimited) ? RLW.failure(data) : null;
+      setComponents(usable ? data : { error: true, unreadable: unread, fail });
     } catch (e) {
       if (!latest()) return;
       console.error('Failed to load components:', e);
       const served = compServedRef.current;
       if (served.symbol === symbol && served.at >= startedAt) { setCompLoading(false); return; }
-      setComponents({ error: true });
+      setComponents({ error: true, fail: e && (e.status || e.upstreamStatus || e.rateLimited) ? RLW.failure(e) : null });
     }
     setCompLoading(false);
   };
@@ -929,20 +953,18 @@ window.IndexConstituentsView = ({ apiKey, theme }) => {
       // "Not included in this plan").
       components.error && isUnknownIndex(selectedIndex) && React.createElement('div', { role: 'status', style: { textAlign: 'center', padding: 40, color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)', fontSize: 14, lineHeight: 1.5 } },
         'There is no index "' + String(selectedIndex || '').replace(/\.INDX$/i, '') + '" in the S&P Global list EODHD serves. Go back and pick one from the list.'),
-      // The same failure where the host's panel already explains it.
-      components.error && !isUnknownIndex(selectedIndex) && explainedAbove() && notServed(() => loadComponents(selectedIndex)),
-      // Error state: said in the body, with a way to ask again.
-      components.error && !isUnknownIndex(selectedIndex) && !(window.Entitlement && window.Entitlement.explained()) && React.createElement('div', { role: 'alert', style: { textAlign: 'center', padding: 40, color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.7)', fontSize: 14, lineHeight: 1.5 } },
-        'The constituent list for ' + String(selectedIndex || 'this index').replace(/\.INDX$/i, '') + (listLimited
-          ? ' did not load — ' + RLW.REACHED + ' That is not a statement that the index is empty.'
-          : components.unreadable ? ' did not load — ' + RLW.UNREADABLE + ' That is not a statement that the index is empty.'
-            : ' did not load — EODHD did not answer, or the connection dropped. That is not a statement that the index is empty.'),
-        React.createElement('div', null,
+      // Error state: said in the body, by its cause, once -- under the open
+      // apps' panel too, where it stood below "Nothing below is missing
+      // data". A plan's refusal (403) is said as that, with nothing to
+      // retry; a refused key or a spent day (401, 402) points to the panel.
+      components.error && !isUnknownIndex(selectedIndex) && React.createElement('div', { role: 'alert', 'data-own-fail': 'index-constituents', 'data-see-panel': RLW.hostSaysKey(components.fail) ? 'true' : undefined, style: { textAlign: 'center', padding: 40, color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.7)', fontSize: 14, lineHeight: 1.5 } },
+        compFailText(),
+        !compRefused() && React.createElement('div', null,
           React.createElement(RLW.RetryButton, {
             wait: rlWait, isDark, 'data-retry-focus': 'true', onClick: () => retryUnlessLimited(() => { retryFocusRef.current = true; loadComponents(selectedIndex); }),
             style: { marginTop: 14, padding: '8px 16px', borderRadius: 6, border: '1px solid ' + (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'), background: 'transparent', color: isDark ? '#E0E3EB' : '#1e1b4b', cursor: 'pointer', fontSize: 13, fontFamily: "'Sora',sans-serif" },
           }),
-          waitLine())),
+          waitLine('index-constituents'))),
     );
   }
 
@@ -1068,19 +1090,19 @@ window.IndexConstituentsView = ({ apiKey, theme }) => {
     },
       // Not served: why, with Try again (counting the limit's wait down;
       // after it the list is asked again by itself).
-      listFail && React.createElement('p', { role: 'status', style: { margin: '0 0 14px' } }, RLW.failText('The index list', listFail)),
+      listFail && React.createElement('p', { role: 'status', 'data-own-fail': 'index-list', 'data-see-panel': RLW.seesPanel(RLW.failText('The index list', listFail)), style: { margin: '0 0 14px' } }, RLW.failText('The index list', listFail)),
       listFail && React.createElement(RLW.RetryButton, {
         wait: rlWait, isDark, 'data-retry-focus': 'true', onClick: () => retryUnlessLimited(() => { retryFocusRef.current = true; retryList(); }),
         style: { padding: '10px 22px', background: C3.logoGradient, border: 'none', borderRadius: 10, color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'Sora',sans-serif" },
       }),
-      listFail && waitLine(),
+      listFail && waitLine('index-list'),
       // Answered, in a shape this page does not read: a reload will not help.
       // Read out when it appears, as the failure above is.
-      !listFail && React.createElement('span', { role: 'status' }, 'EODHD answered with an index list this page cannot read.')),
+      !listFail && React.createElement('span', { role: 'status', 'data-own-fail': 'index-list' }, 'EODHD answered with an index list this page cannot read.')),
     !loading && !indicesError && indices?.length === 0 && !(window.Entitlement && window.Entitlement.explained && window.Entitlement.explained()) && React.createElement('div', {
       style: { textAlign: 'center', padding: 30, color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)', fontSize: 14, lineHeight: 1.5 },
     }, 'EODHD returned an empty index list for this key. The S&P Global constituents are a Marketplace add-on; a plan without it gets an empty list rather than a refusal.'),
-    !loading && (indicesError || indices?.length === 0) && explainedAbove() && !(listFail && listFail.limited) && notServed(() => { setLoading(true); setListTry(n => n + 1); }),
+    !loading && indicesError && explainedAbove() && !(listFail && listFail.limited) && notServed(() => { setLoading(true); setListTry(n => n + 1); }),
     !loading && categorized.length === 0 && indices?.length > 0 && React.createElement('div', { style: { textAlign: 'center', padding: 30, color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' } },
       query
         ? 'No indices match "' + query + '"'
