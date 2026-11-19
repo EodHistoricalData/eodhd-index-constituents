@@ -431,6 +431,8 @@ window.IndexConstituentsView = ({ apiKey, theme }) => {
   const RLW = window.RateLimitWait;
   const rlWait = RLW.useWait();
   const waitNote = rlWait.note;
+  // The name the constituent list's repeat after a 429 is paced and budgeted by.
+  const IC_COMPONENTS = 'index-constituents';
   // The limit is named only when it is why the list failed.
   const listLimited = RLW.useCause(components && components.error ? components : null);
   const retryUnlessLimited = (fn) => {
@@ -610,23 +612,43 @@ window.IndexConstituentsView = ({ apiKey, theme }) => {
       const served = compServedRef.current;
       if (!usable && served.symbol === symbol && served.at >= startedAt) { setCompLoading(false); return; }
       if (usable) compServedRef.current = { symbol, seq, at: Date.now() };
+      // Served: the next failure of this list is a new one. The repeat's
+      // budget stayed out after the repeat itself was served, and the same
+      // index opened again at the limit within 30 s got no repeat.
+      if (usable) RLW.acted(IC_COMPONENTS);
       // An answer of another shape ({"message": ...} with 200, a page the
       // client could not parse) could not be read: said as that, not as "did
       // not answer".
       const unread = Boolean(data && typeof data === 'object' && !usable && (data.unreadable || !data.error));
       // Why it was not served, when the client says (its status): a 403 is
       // the plan's, not a dropped connection.
-      const fail = !usable && data && typeof data === 'object' && (data.status || data.rateLimited) ? RLW.failure(data) : null;
+      // With the index it was for (`asked`): the repeat after a 429 is of that
+      // index, never of another one opened since.
+      const fail = !usable && data && typeof data === 'object' && (data.status || data.rateLimited) ? RLW.failure(data, symbol) : null;
       setComponents(usable ? data : { error: true, unreadable: unread, fail });
     } catch (e) {
       if (!latest()) return;
       console.error('Failed to load components:', e);
       const served = compServedRef.current;
       if (served.symbol === symbol && served.at >= startedAt) { setCompLoading(false); return; }
-      setComponents({ error: true, fail: e && (e.status || e.upstreamStatus || e.rateLimited) ? RLW.failure(e) : null });
+      setComponents({ error: true, fail: e && (e.status || e.upstreamStatus || e.rateLimited) ? RLW.failure(e, symbol) : null });
     }
     setCompLoading(false);
   };
+
+  // An index's constituent list the limit stopped (429): asked once more by
+  // itself when the wait is over, as the index list above is (RateLimitWait.
+  // useReloadAfterWait); only Try again asked it.
+  // If that repeat meets the limit again, Try again keeps counting
+  // the wait down and nothing is sent until it is pressed or the index is
+  // opened again. With the focus on Try again the reload is a keyboard
+  // Try again, as the list's.
+  const compLimitFail = selectedIndex && components && components.error && components.fail && components.fail.limited ? components.fail : null;
+  RLW.useReloadAfterWait(compLimitFail, () => {
+    if (!selectedIndexRef.current) return;
+    if (RLW.focusOnRetry()) retryFocusRef.current = true;
+    loadComponents(selectedIndexRef.current);
+  }, IC_COMPONENTS, { asked: selectedIndex || '' });
 
   // The search as typed, spaces at the ends dropped and runs of spaces read as
   // one: " GSPC", "GSPC " and "S&P 500 " found nothing.
@@ -961,7 +983,7 @@ window.IndexConstituentsView = ({ apiKey, theme }) => {
         compFailText(),
         !compRefused() && React.createElement('div', null,
           React.createElement(RLW.RetryButton, {
-            wait: rlWait, isDark, 'data-retry-focus': 'true', onClick: () => retryUnlessLimited(() => { retryFocusRef.current = true; loadComponents(selectedIndex); }),
+            wait: rlWait, isDark, 'data-retry-focus': 'true', onClick: () => retryUnlessLimited(() => { RLW.acted(IC_COMPONENTS); retryFocusRef.current = true; loadComponents(selectedIndex); }),
             style: { marginTop: 14, padding: '8px 16px', borderRadius: 6, border: '1px solid ' + (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'), background: 'transparent', color: isDark ? '#E0E3EB' : '#1e1b4b', cursor: 'pointer', fontSize: 13, fontFamily: "'Sora',sans-serif" },
           }),
           waitLine('index-constituents'))),
