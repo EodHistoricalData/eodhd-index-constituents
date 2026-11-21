@@ -201,6 +201,9 @@ window.IndexSearchMatch = (idx, query) => {
 };
 
 window.IndexConstituentsView = ({ apiKey, theme }) => {
+  // Drawn again when a host's panel comes or goes: a line that points to
+  // it is drawn only while it is up (RateLimitWait.hostSaysKey, panelUp).
+  ((window.RateLimitWait && window.RateLimitWait.useHostPanel) || (() => {}))();
   // The prices of this screen's AI actions, from the server's list.
   const useFeatureCost = (() => null);
   const indexAiCost = useFeatureCost('index_ai');
